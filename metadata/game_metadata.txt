@@ -1,6 +1,6 @@
-devid=myname
-devtitle=My Name
-gameid=mygame
-gametitle=My Game
-version=0.1
+devid=pieces029
+devtitle=pieces029
+gameid=square-wars
+gametitle=Square Wars
+version=1.0
 icon=metadata/icon.png
