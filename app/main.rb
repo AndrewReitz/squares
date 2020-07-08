@@ -1,3 +1,10 @@
+# frozen_string_literal: true
+
+$gtk.require('app/player.rb')
+$gtk.require('app/enemy.rb')
+$gtk.require('app/bullet.rb')
+$gtk.require('app/game_state.rb')
+
 HEIGHT = 720
 WIDTH = 1280
 
@@ -6,272 +13,240 @@ LEFT = 2
 DOWN = 3
 RIGHT = 4
 
-class Enemy
+ENTIRE_SCREEN_RECT = [0, 0, WIDTH, HEIGHT].freeze
+COLOR_BLACK = [0, 0, 0].freeze
+COLOR_WHITE = [255, 255, 255].freeze
+COLOR_RED = [255, 0, 0].freeze
 
-  SPEED = 1
-  SIZE = 20
-  HALF_SIZE = SIZE / 2
+DEBUG = false
 
-  def initialize(x, y)
-    @x = x
-    @y = y
+def log(args)
+  puts args if DEBUG
+end
+
+def keyboard
+  $args.inputs.keyboard
+end
+
+def controller
+  $args.inputs.controller_one
+end
+
+def mouse
+  $args.inputs.mouse
+end
+
+def solids
+  $args.outputs.solids
+end
+
+def labels
+  $args.outputs.labels
+end
+
+def tick(args)
+  $args = args
+
+  game_state = GameState.new(args)
+
+  # Update
+  if game_state.state == :game_over
+    # draw game over screen
+    labels << [$args.grid.w_half, $args.grid.h_half, 'Game Over', 3, 1, 255, 255, 255]
+    # after 1 second add replay button
+  elsif game_state.state == :playing
+    game_state = move_player(game_state)
+    game_state = move_enemies(game_state)
+    game_state = player_shooting?(game_state)
+    game_state = move_bullets(game_state)
+    game_state = bullet_enemy_collision(game_state)
+    game_state = enemy_player_collision(game_state)
+    game_state = create_more_enemies(game_state)
   end
 
-  def draw(args, player)
-    args.outputs.solids << [x - HALF_SIZE, y - HALF_SIZE, SIZE, SIZE, 255, 0, 0]
+  # Draw
+  draw_debug
+  draw_background
+  draw_player(game_state)
+  draw_bullets(game_state)
+  draw_enemies(game_state)
+  draw_score(game_state)
 
-    if args.state.lose
-      return
-    end
-    
-    if player.x > @x
-      @x += SPEED
-    end
-    if player.x < @x
-      @x -= SPEED
-    end
-    if player.y > @y
-      @y += SPEED
-    end
-    if player.y < @y
-      @y -= SPEED
-    end
+  game_state.serialize
+end
+
+# Draw debug things if DEBUG flag is set to true.
+def draw_debug
+  return unless DEBUG
+
+  args.outputs.borders << game_state.player.safespace + COLOR_RED
+end
+
+def move_player(game_state)
+  x = game_state.player.loc_x
+  y = game_state.player.loc_y
+  direction = game_state.player.direction
+
+  if keyboard.key_held.a || controller.key_held.left || keyboard.left
+    direction = LEFT
+    x -= 5
+  end
+  if keyboard.key_held.d || controller.key_held.right || keyboard.right
+    direction = RIGHT
+    x += 5
+  end
+  if keyboard.key_held.w || controller.key_held.up || keyboard.up
+    direction = UP
+    y += 5
+  end
+  if keyboard.key_held.s || controller.key_held.down || keyboard.down
+    direction = DOWN
+    y -= 5
   end
 
-  def serialize
-    { 
-      x: @x, 
-      y: @y
-    }
-  end
+  player = game_state.player.copy(x: x, y: y, direction: direction)
+  game_state.copy(player: player)
+end
 
-  def y
-    @y
-  end
+def draw_background
+  solids << ENTIRE_SCREEN_RECT + COLOR_BLACK
+end
 
-  def x
-    @x
-  end
+def draw_player(game_state)
+  solids << game_state.player.solid
+end
 
-  def inspect
-    serialize.to_s
-  end
+def draw_bullets(game_state)
+  solids << game_state.bullets.map(&:solid)
+end
 
-  def to_s
-    serialize.to_s
-  end
-
-  def intersects(player)
-    [x - HALF_SIZE, y - HALF_SIZE, SIZE, SIZE].intersect_rect? [player.x - Player::HALF_SIZE, player.y - Player::HALF_SIZE, Player::SIZE, Player::SIZE]
+def draw_enemies(game_state)
+  game_state.enemies.map do |e|
+    solids << e.solid
   end
 end
 
-class Player
-
-  SIZE = 50
-  HALF_SIZE = 25
-
-  def initialize(x = WIDTH / 2, y = HEIGHT / 2)
-    @x = x
-    @y = y
-    @direction = UP
-    @bullets = []
-  end
-
-  def draw args
-    args.outputs.solids << [x - HALF_SIZE, y - HALF_SIZE, SIZE, SIZE, 255, 255, 255]
-
-    if args.state.lose
-      return
-    end
-
-    if args.inputs.keyboard.key_held.a
-      @direction = LEFT
-      @x -= 5
-      @x = [@x, 0 + 25].max
-    end
-    if args.inputs.keyboard.key_held.d
-      @direction = RIGHT
-      @x += 5
-      @x = [@x, WIDTH - 25].min
-    end
-    if args.inputs.keyboard.key_held.w
-      @direction = UP
-      @y += 5
-      @y = [@y, HEIGHT - 25].min
-    end
-    if args.inputs.keyboard.key_held.s
-      @direction = DOWN
-      @y -= 5
-      @y = [@y, 0 + 25].max
-    end
-
-    if args.inputs.keyboard.key_down.space
-      @bullets << Bullet.new(@x, @y, @direction)
-    end
-
-    toRemove = []
-    @bullets.each do |bullet|
-      bullet.draw(args)
-      if bullet.x < 0 || bullet.x > WIDTH || bullet.y < 0 || bullet.y > HEIGHT
-        toRemove << bullet
-      end
-    end
-    toRemove.each do |b|
-      @bullets.delete(b)
-    end
-  end
-
-  def x
-    @x
-  end
-
-  def y
-    @y
-  end
-
-  def direction
-    @direction
-  end
-
-  def bullets
-    @bullets
-  end
-
-  def serialize
-    { 
-      x: @x, 
-      y: @y, 
-      direction: @direction,
-      bullets: @bullets
-    }
-  end
-
-  def inspect
-    serialize.to_s
-  end
-
-  def to_s
-    serialize.to_s
-  end
+def draw_score(game_state)
+  labels << [10, HEIGHT - 10, "Score: #{game_state.score}", 1, 0, 255, 0, 0]
 end
 
-class Bullet
+def create_more_enemies(game_state)
+  return game_state if game_state.enemies?
 
-  SIZE = 10
-  HALF_SIZE = 5
-  VELOCITY = 10
+  enemy_count = game_state.enemy_count * 2
 
-  def initialize(x, y, direction)
-    @x = x
-    @y = y
-    @direction = direction
+  if enemy_count == 4
+    enemies = [
+      Enemy.new(nil, x: $args.grid.left, y: $args.grid.top),
+      Enemy.new(nil, x: $args.grid.right, y: $args.grid.bottom),
+      Enemy.new(nil, x: $args.grid.left, y: $args.grid.bottom),
+      Enemy.new(nil, x: $args.grid.right, y: $args.grid.top)
+    ]
+
+    return game_state.copy(enemies: enemies, enemy_count: enemy_count)
   end
 
-  def draw args
-    if (@direction == UP)
-      @y += VELOCITY
-    end
-    if (@direction == DOWN)
-      @y -= VELOCITY
-    end
-    if (@direction == LEFT)
-      @x -= VELOCITY
-    end
-    if (@direction == RIGHT)
-      @x += VELOCITY
-    end
+  player_area = game_state.player.safespace
 
-    args.outputs.solids << [@x - 5, @y - 5, SIZE, SIZE, 255, 255, 255]
+  enemies = enemy_count.map do |_|
+    e = Enemy.random
+    e = Enemy.random while e.rect.intersect_rect?(player_area)
+    e
   end
 
-  def x
-    @x
-  end
-
-  def y
-    @y
-  end
-
-  def direction
-    @direction
-  end
-
-  def serialize
-    { 
-      x: @x, 
-      y: @y, 
-      direction: @direction
-    }
-  end
-
-  def inspect
-    serialize.to_s
-  end
-
-  def to_s
-    serialize.to_s
-  end
-
-  def intersects(enemy)
-    [@x - 5, @y - 5, SIZE, SIZE].intersect_rect? [enemy.x - Enemy::HALF_SIZE, enemy.y - Enemy::HALF_SIZE, Enemy::SIZE, Enemy::SIZE]
-  end
+  game_state.copy(enemies: enemies, enemy_count: enemy_count)
 end
 
-def tick args
-  args.state.enemy.count ||= 2
-  args.state.score ||= 0
-  args.state.lose ||= false
-  args.outputs.solids << [0, 0, WIDTH, HEIGHT]
-  args.state.player ||= Player.new
-  player = args.state.player
-  player.draw(args)
+def player_shooting?(game_state)
+  player = game_state.player
 
-  do_enemy_things args
+  if keyboard.key_down.space || controller.key_down.x ||
+     controller.key_down.y || controller.key_down.a ||
+     controller.key_down.b || mouse.click
+    b = Bullet.new(
+      nil,
+      x: player.loc_x,
+      y: player.loc_y,
+      direction: player.direction
+    )
+    return game_state.copy(bullets: game_state.bullets + [b])
+  end
 
-  args.outputs.labels << [
-    WIDTH - 200, HEIGHT - 10, "Score #{args.state.score}", 255, 255, 255
-  ]
+  game_state
 end
 
-def do_enemy_things args
-  args.state.enemies ||= [ Enemy.new(0, 0), Enemy.new(WIDTH, HEIGHT) ]
-  
-  player = args.state.player
-  enemies = args.state.enemies
-
-  enemies.each do |e|
-    player.bullets.each do |b|
-      if b.intersects(e)
-        args.state.score += 1
-        enemies.delete(e)
-      end
+def move_bullets(game_state)
+  new_bullets = game_state.bullets.map do |b|
+    new_x = b.loc_x
+    new_y = b.loc_y
+    if b.direction == UP
+      new_y += Bullet::VELOCITY
+    elsif b.direction == DOWN
+      new_y -= Bullet::VELOCITY
+    elsif b.direction == LEFT
+      new_x -= Bullet::VELOCITY
+    elsif b.direction == RIGHT
+      new_x += Bullet::VELOCITY
     end
 
-    e.draw(args, player)
-    if e.intersects(player)
-      args.state.lose = true
-      args.outputs.labels << [
-        x: WIDTH / 2 - 25, 
-        y: HEIGHT / 2, 
-        text: "Game Over", 
-        size_enum: 2,
-        alignment_enum: 0, 
-        r: 255
-      ]
+    b.copy(x: new_x, y: new_y)
+  end
+
+  new_bullets = new_bullets.select do |b|
+    b.loc_x < WIDTH && b.loc_x.positive? && b.loc_y.positive? && b.loc_y < HEIGHT
+  end
+
+  game_state.copy(bullets: new_bullets)
+end
+
+def move_enemies(game_state)
+  player = game_state.player
+
+  new_enemies = game_state.enemies.map do |e|
+    new_x = e.loc_x
+    new_y = e.loc_y
+    if player.loc_x < e.loc_x
+      new_x -= Enemy::SPEED
+    elsif player.loc_x > e.loc_x
+      new_x += Enemy::SPEED
+    end
+
+    if player.loc_y < e.loc_y
+      new_y -= Enemy::SPEED
+    elsif player.loc_y > e.loc_y
+      new_y += Enemy::SPEED
+    end
+
+    Enemy.new(nil, x: new_x, y: new_y)
+  end
+
+  game_state.copy(enemies: new_enemies)
+end
+
+def bullet_enemy_collision(game_state)
+  enemies_to_remove = []
+
+  game_state.bullets.each do |b|
+    game_state.enemies.each do |e|
+      enemies_to_remove << e if b.rect.intersect_rect?(e.rect)
     end
   end
 
-  if args.state.enemies.length == 0
-    args.state.enemy.count *= 2
-    args.state.enemies += args.state.enemy.count.map do
-      enemy = Enemy.new(rand(WIDTH), rand(HEIGHT))
-      while enemy.intersects(player)
-        enemy = Enemy.new(rand(WIDTH), rand(HEIGHT))
-      end
-      enemy
-    end
+  score = game_state.score + enemies_to_remove.size
+
+  new_enemies = game_state.enemies.reject do |e|
+    enemies_to_remove.include?(e)
   end
+
+  game_state.copy(enemies: new_enemies, score: score)
+end
+
+def enemy_player_collision(game_state)
+  found = game_state.enemies.find { |e| e.rect.intersect_rect?(game_state.player.rect) }
+
+  return game_state.copy(state: :game_over) if found
+
+  game_state
 end
 
 def r

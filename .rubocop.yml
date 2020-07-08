@@ -1,0 +1,27 @@
+Naming/MethodParameterName:
+  AllowedNames:
+    - x
+    - y
+
+AllCops:
+  NewCops: enable
+
+Style/GlobalVars:
+  AllowedVariables:
+    - $gtk
+    - $args
+
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+Metrics/AbcSize:
+  Enabled: false
+
+Metrics/CyclomaticComplexity:
+  Enabled: false
+
+Metrics/MethodLength:
+  Enabled: false
+
+Metrics/PerceivedComplexity:
+  Enabled: false
