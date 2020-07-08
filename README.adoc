@@ -1,5 +1,7 @@
 Simple Game to Try out DragonRuby
 
+Play it https://pieces029.itch.io/square-wars[here]
+
 Copyright 2020 Andrew Reitz
 
 Licensed under the Apache License, Version 2.0 (the "License");
