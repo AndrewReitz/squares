@@ -44,17 +44,46 @@ def labels
   $args.outputs.labels
 end
 
+def borders
+  $args.outputs.borders
+end
+
+def draw_button(x:, y:, text:, game_state: game_state, &onclick)
+  w = 300
+  h = 50
+  $args.state.buttons ||= {}
+
+  clicked_at = $args.state.buttons[text]
+
+  border = [x - w.half, y - h.half, w, h, 255, 0, 0]
+
+  $args.state.buttons[text] = $args.tick_count if mouse.click&.point&.inside_rect?(border)
+
+  if !clicked_at.nil? && clicked_at + 0.25.seconds < $args.tick_count
+    game_state = onclick.call game_state
+    $args.state.buttons[text] = nil
+  end
+
+  labels << [x, y + 10, text, 0, 1, 255, 0, 0]
+  borders << border
+  solids << border + [255 * clicked_at&.ease(0.25.seconds, :flip) || 1]
+
+  game_state
+end
+
 def tick(args)
   $args = args
 
   game_state = GameState.new(args)
 
   # Update
-  if game_state.state == :game_over
-    # draw game over screen
-    labels << [$args.grid.w_half, $args.grid.h_half, 'Game Over', 3, 1, 255, 255, 255]
-    # after 1 second add replay button
-  elsif game_state.state == :playing
+  case game_state.state
+  when :start
+    labels << [$args.grid.w_half, $args.grid.h_half, 'Press any key to start', 3, 1, 255, 255, 255]
+    if mouse.click || keyboard.directional_vector || keyboard.key_down.enter || keyboard.key_down.escape
+      game_state = game_state.copy(state: :playing)
+    end
+  when :playing
     game_state = move_player(game_state)
     game_state = move_enemies(game_state)
     game_state = player_shooting?(game_state)
@@ -67,10 +96,28 @@ def tick(args)
   # Draw
   draw_debug
   draw_background
-  draw_player(game_state)
-  draw_bullets(game_state)
-  draw_enemies(game_state)
-  draw_score(game_state)
+
+  if game_state.state == :playing || game_state.state == :game_over
+    draw_player(game_state)
+    draw_bullets(game_state)
+    draw_enemies(game_state)
+    draw_score(game_state)
+  end
+
+  if game_state.state == :game_over
+    if game_state.game_over_at + 1.seconds < $args.tick_count
+      game_state = draw_button(
+        x: $args.grid.w_half, 
+        y: $args.grid.h_half, 
+        text: 'Try Again?', 
+        game_state: game_state
+      ) do |g|
+        new_game = g.reset
+        new_game.copy(state: :playing)
+      end
+    elsif labels << [$args.grid.w_half, $args.grid.h_half, 'Game Over', 3, 1, 255, 255, 255]
+    end
+  end
 
   game_state.serialize
 end

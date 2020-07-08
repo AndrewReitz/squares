@@ -1,9 +1,20 @@
 # frozen_string_literal: true
 
 # State of the game.
-# state: :intro, :playing, :game_over
+# state: :start, :playing, :game_over
 class GameState
-  attr_reader :player, :enemies, :score, :bullets, :enemy_count, :state
+  attr_reader :player, :enemies, :score, :bullets, :enemy_count, :state, :game_over_at
+
+  def reset()
+    @args.state.score = nil
+    @args.state.player = nil
+    @args.state.enemies = nil
+    @args.state.bullets = nil
+    @args.state.enemy_count = nil
+    @args.state.state = nil
+    @args.state.game_over_at = nil
+    GameState.new(@args)
+  end
 
   def copy(player: nil, enemies: nil, score: nil, bullets: nil, enemy_count: nil, state: nil)
     GameState.new(
@@ -39,7 +50,9 @@ class GameState
     args.state.bullets ||= []
     @bullets = bullets || args.state.bullets.map { |b| Bullet.new(b) }
 
-    @state = state || args.state.state || :playing
+    @state = state || args.state.state || :start
+
+    @game_over_at = game_over_at || args.state.game_over_at || 0
 
     freeze
   end
@@ -68,5 +81,7 @@ class GameState
     @args.state.enemy_count = @enemy_count
 
     @args.state.state = @state
+
+    @args.state.game_over_at = @game_over_at
   end
 end
